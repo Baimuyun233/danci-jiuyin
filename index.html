@@ -441,6 +441,9 @@ function startRec(){
       var blob = new Blob(chunks, {type: recorder.mimeType || "audio/webm"});
       (stream.getTracks()||[]).forEach(function(t){ t.stop(); });
       stream = null;
+      // 提示音放在停录之后，不然会被录进最后半拍
+      tone(620, 0.09);
+      tone(470, 0.10, 0.11);
       lastBlob = blob;
       decodeAndRun(blob);
     };
@@ -451,7 +454,6 @@ function startRec(){
     document.getElementById("recBtn").classList.add("live");
     document.getElementById("meterWrap").classList.add("on");
     status("");
-    tone(900, 0.08);
     startMeter();
     clearTimeout(stopTimer);
     stopTimer = setTimeout(function(){ if (live) stopRec(); }, 4000);
@@ -469,8 +471,6 @@ function stopRec(){
   document.getElementById("recBtn").classList.remove("live");
   document.getElementById("meterWrap").classList.remove("on");
   status("分析中…");
-  tone(620, 0.09);
-  tone(470, 0.10, 0.11);
   try { recorder.stop(); } catch(e){ status("录音中断", true); }
 }
 
@@ -645,6 +645,96 @@ function splitSegs(x, sr, a, b, k){
   return segs;
 }
 
+/* 段内最响的一小段的电平。手机 AGC 会把开口压下去，
+   整段取平均会偏低，取最响的那 20ms 更接近真实的出声大小 */
+function segLevel(x, a, b, sr){
+  var win = Math.max(8, Math.round(sr*0.02)), hop = Math.max(4, Math.round(win/2));
+  var best = 0;
+  for (var p = a; p + win <= b; p += hop){
+    var r = rms(x, p, p + win);
+    if (r > best) best = r;
+  }
+  return best || rms(x, a, b);
+}
+
+/* 按参考录音每拍的真实时长比例做切分，切点仍尽量落在能量谷。
+   「均分后找附近最低点」默认各拍差不多长，长音、促音、拨音就被切错；
+   这里把标准录音的比例当先验，用动态规划选最省的一条切法。 */
+var DP_LEN = 1.2;    // 时长偏离参考的权重（太大就只会照着参考比例切，反而切错）
+var DP_CUT = 0.4;    // 切点落在能量高处的罚分
+var USE_DP = 1;      // 0 就退回旧的均分切法
+
+function splitSegsDP(x, sr, a, b, k, refDur){
+  if (k <= 1) return [[a, b]];
+  if (!refDur || refDur.length !== k) return null;
+
+  var hop = Math.floor(sr*0.005), win = Math.floor(sr*0.02);
+  var n = Math.floor((b-a-win)/hop) + 1;
+  if (n < k * 2) return null;
+
+  var e = new Float32Array(n), mx = 0;
+  for (var i=0;i<n;i++){
+    e[i] = rms(x, a+i*hop, a+i*hop+win);
+    if (e[i] > mx) mx = e[i];
+  }
+  if (mx <= 0) return null;
+
+  var tot = 0;
+  for (var i=0;i<k;i++) tot += refDur[i];
+  var p = [];
+  for (var i=0;i<k;i++) p.push(refDur[i]/tot);
+
+  // 每拍允许的长度范围，防止某一拍被拉成一大块
+  var lo = [], hi = [];
+  for (var i=0;i<k;i++){
+    lo.push(Math.max(1, Math.floor(n * p[i] * 0.4)));
+    hi.push(Math.max(2, Math.ceil(n * p[i] * 2.6)));
+  }
+
+  var INF = 1e18;
+  var dp = [], bk = [];
+  for (var i=0;i<=k;i++){
+    dp.push(new Float64Array(n+1).fill(INF));
+    bk.push(new Int32Array(n+1).fill(-1));
+  }
+  dp[0][0] = 0;
+
+  for (var i=1;i<=k;i++){
+    var ex = n * p[i-1];
+    for (var j=1;j<=n;j++){
+      var s0 = Math.max(0, j - hi[i-1]), s1 = j - lo[i-1];
+      if (s1 < s0) continue;
+      var cutC = (i < k) ? DP_CUT * (e[j-1] / mx) : 0;
+      var bestV = INF, bestS = -1;
+      for (var s=s0; s<=s1; s++){
+        var base = dp[i-1][s];
+        if (base >= INF) continue;
+        var d = (j - s) - ex;
+        var v = base + DP_LEN * (d*d) / (ex*ex + 1) + cutC;
+        if (v < bestV){ bestV = v; bestS = s; }
+      }
+      dp[i][j] = bestV; bk[i][j] = bestS;
+    }
+  }
+
+  if (dp[k][n] >= INF) return null;
+
+  var cut = new Array(k + 1);
+  cut[k] = n;
+  var j = n;
+  for (var i=k;i>=1;i--){
+    cut[i-1] = bk[i][j];
+    if (cut[i-1] < 0) return null;
+    j = cut[i-1];
+  }
+  if (j !== 0) return null;
+
+  var segs = [];
+  for (var i=0;i<k;i++)
+    segs.push([a + cut[i]*hop, a + cut[i+1]*hop]);
+  return segs;
+}
+
 function analyse(x0, sr0, word){
   var r = down16(x0, sr0), x = r.x, sr = r.sr;
   var span = speechSpan(x, sr);
@@ -654,7 +744,8 @@ function analyse(x0, sr0, word){
   if (dur > 3.0)  return {err:"太长了，一次只读一个词"};
 
   var k = word.mora.length;
-  var segs = splitSegs(x, sr, span.a, span.b, k);
+  var segs = USE_DP ? splitSegsDP(x, sr, span.a, span.b, k, word.refDur) : null;
+  if (!segs) segs = splitSegs(x, sr, span.a, span.b, k);
 
   var morae = [];
   for (var s=0;s<segs.length;s++){
@@ -670,22 +761,25 @@ function analyse(x0, sr0, word){
     morae.push({
       kana: word.mora[s],
       ms: Math.round((b-a)/sr*1000),
-      amp: rms(x, a, b),
+      amp: segLevel(x, a, b, sr),
       f0: f0s.length ? f0s[Math.floor(f0s.length/2)] : 0
     });
   }
 
-  // 能量太低当成无声
+  // 能量太低当成无声。门槛别卡太高：手机录同一句话，各拍音量本来就不齐，
+  // 卡在 0.28 会把真读了但稍轻的一拍判成没读。
   var amps = morae.map(function(m){ return m.amp; }).filter(function(v){ return v>0; }).sort(function(u,v){ return u-v; });
   var ampMed = amps.length ? amps[Math.floor(amps.length/2)] : 0;
   morae.forEach(function(m){
-    m.voiced = m.f0 > 0 && (ampMed === 0 || m.amp > ampMed*0.28);
-    if (!m.voiced) m.f0 = 0;
+    m.silent = ampMed > 0 && m.amp <= ampMed*0.16;
+    m.voiced = !m.silent && m.f0 > 0;     // voiced 只决定参不参与音高
+    if (m.silent) m.f0 = 0;
   });
 
-  var voicedMs = morae.filter(function(m){ return m.voiced && m.kana !== "っ"; })
-                      .map(function(m){ return m.ms; }).sort(function(u,v){ return u-v; });
-  var beat = voicedMs.length ? voicedMs[Math.floor(voicedMs.length/2)] : 1;
+  // 拍子的基准用「真出了声的拍」。音高没测出来不等于没读，不能把它踢出基准
+  var beats = morae.filter(function(m){ return !m.silent && m.kana !== "っ"; })
+                   .map(function(m){ return m.ms; }).sort(function(u,v){ return u-v; });
+  var beat = beats.length ? beats[Math.floor(beats.length/2)] : 1;
   morae.forEach(function(m){ m.ratio = m.ms / beat; });
 
   var logs = morae.filter(function(m){ return m.voiced; }).map(function(m){ return Math.log(m.f0); });
@@ -814,7 +908,7 @@ function renderTips(res){
                    s: r ? "标准是 " + r.toFixed(2) + " 拍" : "停够了"});
       return;
     }
-    if (!m.voiced){
+    if (m.silent){
       msgs.push({c:"no", t:tag + "几乎没声音", s:"这一拍要发出来"});
       return;
     }
