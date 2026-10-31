@@ -1,0 +1,1022 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>单词纠音</title>
+<style>
+  :root{
+    --ink:#1d1d1f; --ink2:#6e6e73; --ink3:#86868b;
+    --line:rgba(0,0,0,.08); --hair:rgba(0,0,0,.055);
+    --bg:#ffffff; --soft:#f5f5f7;
+    --blue:#0071e3; --ok:#0a7c3d; --bad:#d70015;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",
+         "PingFang SC","Microsoft YaHei",sans-serif;
+    letter-spacing:-.01em;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right)
+            env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .wrap{max-width:620px;margin:0 auto;padding:28px 20px 56px}
+
+  header{padding:8px 0 22px}
+  h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-.02em}
+  .lead{color:var(--ink3);font-size:13.5px;margin-top:3px}
+
+  /* 课程横向滑动 */
+  .lessons{
+    display:flex;gap:8px;overflow-x:auto;padding:2px 0 14px;
+    scrollbar-width:none;-ms-overflow-style:none;
+    scroll-snap-type:x proximity;
+  }
+  .lessons::-webkit-scrollbar{display:none}
+  .chip{
+    flex:0 0 auto;scroll-snap-align:start;
+    font:inherit;font-size:13.5px;line-height:1;
+    padding:9px 15px;border-radius:100px;border:1px solid var(--line);
+    background:transparent;color:var(--ink2);cursor:pointer;
+    transition:background .15s,border-color .15s,color .15s;
+  }
+  .chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+
+  /* 主舞台 */
+  .stage{text-align:center;padding:26px 0 4px}
+  .kanji{
+    display:block;font-size:clamp(36px,11vw,52px);font-weight:600;
+    letter-spacing:.02em;line-height:1.12;
+  }
+  .kana{
+    display:block;font-size:17px;color:var(--ink3);margin-top:10px;
+    letter-spacing:.06em;
+  }
+  .acc{
+    display:inline-block;margin-top:14px;font-size:12px;color:var(--ink3);
+    letter-spacing:.04em;
+  }
+  .morae{
+    display:flex;justify-content:center;flex-wrap:wrap;gap:6px 16px;
+    margin-top:18px;color:var(--ink2);font-size:15px;letter-spacing:.04em;
+  }
+  .morae b{font-weight:400}
+  .morae .cnt{color:var(--ink3);font-size:13px}
+
+  .actions{display:flex;gap:10px;justify-content:center;margin-top:30px;flex-wrap:wrap}
+  button{font-family:inherit;cursor:pointer;transition:opacity .15s,background .15s}
+  button:active{opacity:.72}
+  .primary{
+    font-size:16px;font-weight:500;padding:14px 40px;border-radius:100px;
+    border:none;background:var(--ink);color:#fff;letter-spacing:-.01em;
+  }
+  .primary.live{background:var(--bad)}
+  .secondary{
+    font-size:15px;padding:13px 22px;border-radius:100px;
+    border:1px solid var(--line);background:transparent;color:var(--ink);
+  }
+  .status{display:block;margin-top:16px;font-size:13.5px;color:var(--ink3);min-height:20px}
+  .status.err{color:var(--bad)}
+
+  /* 录音电平 */
+  #meterWrap{display:none;margin-top:22px;text-align:left}
+  #meterWrap.on{display:block}
+  .meterTop{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--bad);margin-bottom:8px}
+  .pulse{width:7px;height:7px;border-radius:50%;background:var(--bad);animation:pl 1.1s infinite}
+  @keyframes pl{0%,100%{opacity:1}50%{opacity:.22}}
+  .meter{height:6px;background:var(--soft);border-radius:100px;overflow:hidden;position:relative}
+  .meter i{display:block;height:100%;width:0;background:var(--ok);border-radius:100px;transition:width .07s linear}
+  .meterMark{position:absolute;top:0;bottom:0;width:1px;background:rgba(0,0,0,.14)}
+  .meterHint{font-size:12px;color:var(--ink3);margin-top:7px}
+
+  /* 结果 */
+  .panel{margin-top:34px;border-top:1px solid var(--hair);padding-top:26px}
+  .empty{color:var(--ink3);font-size:14px;text-align:center;padding:16px 0}
+  .sech{
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    font-size:13px;color:var(--ink3);letter-spacing:.01em;margin:26px 0 12px;
+  }
+  .sech:first-child{margin-top:0}
+  .sech .lg{font-size:12px}
+
+  .bars{display:flex;align-items:flex-end;gap:8px;height:104px;padding:0 2px}
+  .barBox{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%}
+  .barVal{font-size:11.5px;color:var(--ink2);margin-bottom:5px;font-variant-numeric:tabular-nums}
+  .barVal i{font-style:normal;color:var(--ink3);font-size:10.5px}
+  .bar{width:100%;max-width:34px;border-radius:5px 5px 2px 2px;background:var(--ink);min-height:3px}
+  .bar.bad{background:var(--bad)}
+  .barRef{width:100%;max-width:34px;height:4px;border-radius:2px;background:var(--soft);margin-top:4px}
+  .barLab{font-size:13px;color:var(--ink);margin-top:8px}
+  .barSub{font-size:10.5px;color:var(--ink3)}
+
+  canvas{width:100%;height:auto;display:block}
+
+  ul.tips{list-style:none;padding:0;margin:0}
+  ul.tips li{
+    display:flex;gap:11px;padding:13px 0;border-top:1px solid var(--hair);
+    font-size:14.5px;line-height:1.45;text-align:left;
+  }
+  ul.tips li:first-child{border-top:none;padding-top:4px}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--ink3);margin-top:9px;flex:none}
+  .dot.ok{background:var(--ok)}
+  .dot.no{background:var(--bad)}
+  .tips small{display:block;color:var(--ink3);font-size:12.5px;margin-top:2px}
+
+  footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--hair);
+         color:var(--ink3);font-size:11.5px;line-height:1.75;text-align:center}
+
+  @media (max-width:420px){
+    .wrap{padding:20px 16px 48px}
+    .actions{gap:8px}
+    .primary{padding:14px 34px}
+    .secondary{padding:13px 18px;font-size:14px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>单词纠音</h1>
+    <div class="lead">先听标准音，再自己读。</div>
+  </header>
+
+  <nav class="lessons" id="chips"></nav>
+
+  <section class="stage">
+    <span class="kanji" id="kanji">—</span>
+    <span class="kana" id="kana"></span>
+    <span class="acc" id="acc"></span>
+    <div class="morae" id="moraRow"></div>
+
+    <div class="actions">
+      <button class="primary" id="recBtn">录音</button>
+      <button class="secondary" id="refBtn">听标准</button>
+      <button class="secondary" id="nextBtn">换一个</button>
+    </div>
+    <span class="status" id="status"></span>
+
+    <div id="meterWrap">
+      <div class="meterTop"><span class="pulse"></span><span id="recTime">正在录音 0.0 秒</span></div>
+      <div class="meter"><i id="meterBar"></i><span class="meterMark" style="left:18%"></span></div>
+      <div class="meterHint" id="meterHint">出声，让这个条动起来</div>
+    </div>
+  </section>
+
+  <section class="panel" id="resultCard">
+    <div class="empty" id="emptyTip">点「录音」，读完这个词再点一次结束。</div>
+    <div id="resultBody" style="display:none">
+      <div class="sech">
+        <span>每拍时长 <span class="lg">彩条＝你　灰条＝标准</span></span>
+        <button class="secondary" id="playBtn" style="padding:6px 14px;font-size:12.5px">听我的</button>
+      </div>
+      <div class="bars" id="bars"></div>
+
+      <div class="sech"><span>音高</span><span class="lg">实线＝你　虚线＝标准</span></div>
+      <canvas id="pitch" width="1440" height="420"></canvas>
+
+      <div class="sech"><span>反馈</span></div>
+      <ul class="tips" id="tips"></ul>
+    </div>
+  </section>
+
+  <footer id="foot"></footer>
+</div>
+
+<script src="data_l1.js"></script>
+<script src="data_l2.js"></script>
+<script src="data_l3.js"></script>
+<script src="data_l4.js"></script>
+<script src="data_l5.js"></script>
+<script src="data_l6.js"></script>
+<script src="data_l7.js"></script>
+<script src="data_l8.js"></script>
+<script src="data_l9.js"></script>
+<script src="data_l10.js"></script>
+<script src="data_l11.js"></script>
+<script src="data_l12.js"></script>
+<script src="data_l13.js"></script>
+<script src="data_l14.js"></script>
+<script src="data_l15.js"></script>
+<script src="data_l16.js"></script>
+<script src="data_l17.js"></script>
+<script src="data_l18.js"></script>
+<script>
+/* MFCC 特征按课懒加载：手机上不必一上来就下 2.6MB */
+var _mfccPending = {};
+function ensureMfcc(n){
+  if (window.MFCC && window.MFCC[n]) return Promise.resolve();
+  if (_mfccPending[n]) return _mfccPending[n];
+  _mfccPending[n] = new Promise(function(resolve){
+    var el = document.createElement("script");
+    el.src = "mfcc_l" + n + ".js";
+    el.onload = resolve;
+    el.onerror = resolve;
+    document.head.appendChild(el);
+  });
+  return _mfccPending[n];
+}
+</script>
+<script>
+var REG = window.LESSONS || {};
+var LESSONS = Object.keys(REG).map(Number).sort(function(a,b){ return a-b; });
+var WORDS = [];
+LESSONS.forEach(function(n){
+  REG[n].forEach(function(w){ w.lesson = n; WORDS.push(w); });
+});
+
+var curLesson = 0;   // 0 = 全部
+var cur = null;
+var recorder = null, chunks = [], stream = null, live = false, stopTimer = 0;
+var acCtx = null, analyser = null, meterSrc = null, rafId = 0, recStart = 0;
+var lastBlob = null, lastUrl = null, lastMatch = null;
+var refAudio = new Audio();
+
+/* ---------------- 词库 ---------------- */
+function buildChips(){
+  var box = document.getElementById("chips");
+  box.innerHTML = "";
+  var items = [{v:0, t:"全部"}];
+  LESSONS.forEach(function(n){ items.push({v:n, t:"第 " + n + " 课"}); });
+  items.forEach(function(it){
+    var b = document.createElement("button");
+    b.className = "chip" + (it.v===curLesson ? " on" : "");
+    b.textContent = it.t;
+    b.onclick = function(){
+      if (live) stopRec();
+      curLesson = it.v; buildChips(); nextWord();
+    };
+    box.appendChild(b);
+  });
+}
+
+function pool(){
+  if (curLesson === 0) return WORDS;
+  return WORDS.filter(function(w){ return w.lesson === curLesson; });
+}
+
+function nextWord(){
+  if (live) stopRec();
+  var p = pool();
+  if (!p.length){ status("这一类里还没有词", true); return; }
+  var w;
+  do { w = p[Math.floor(Math.random()*p.length)]; } while (p.length>1 && cur && w === cur);
+  cur = w;
+  document.getElementById("kanji").textContent = w.kanji;
+  document.getElementById("kana").textContent  = w.kana;
+  document.getElementById("acc").textContent = "第 " + w.lesson + " 课";
+  var row = document.getElementById("moraRow");
+  row.innerHTML = "";
+  w.mora.forEach(function(m){
+    var s = document.createElement("span");
+    s.innerHTML = "<b>" + m + "</b>";
+    row.appendChild(s);
+  });
+  var cnt = document.createElement("span");
+  cnt.style.color = "#8a929c";
+  cnt.textContent = w.mora.length + " 拍";
+  row.appendChild(cnt);
+  lastMatch = null;
+  if (typeof ensureMfcc === "function") ensureMfcc(cur.lesson);
+  resetResult();
+}
+
+/* ---------------- 状态与提示音 ---------------- */
+function status(t, err){
+  var s = document.getElementById("status");
+  s.textContent = t || "";
+  s.className = "status" + (err ? " err" : "");
+}
+
+function ensureAC(){
+  if (!acCtx){
+    var C = window.AudioContext || window.webkitAudioContext;
+    acCtx = new C();
+  }
+  if (acCtx.state === "suspended") acCtx.resume();
+  return acCtx;
+}
+
+function tone(freq, dur, delay){
+  try{
+    var c = ensureAC();
+    var t = c.currentTime + (delay || 0);
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(c.destination);
+    o.start(t); o.stop(t + dur + 0.03);
+  }catch(e){}
+}
+
+/* ---------------- 标准录音 ---------------- */
+var refTimer = 0;
+function playRef(){
+  if (!cur || !cur.src){ status("这个词没有录音", true); return; }
+  try{
+    clearTimeout(refTimer);
+    refAudio.pause();
+    if (refAudio.getAttribute("data-src") !== cur.src){
+      refAudio.setAttribute("data-src", cur.src);
+      refAudio.src = cur.src;
+    }
+    var go = function(){
+      try{
+        refAudio.currentTime = cur.start;
+        refAudio.play().then(function(){ status("播放标准音…"); })
+          .catch(function(){ status("放不出来，看看 audio 文件夹在不在", true); });
+        refTimer = setTimeout(function(){
+          refAudio.pause();
+          status("");
+        }, (cur.dur + 0.2) * 1000);
+      }catch(e){}
+    };
+    if (refAudio.readyState >= 1) go();
+    else refAudio.onloadedmetadata = go;
+  }catch(e){ status("播放失败", true); }
+}
+
+/* ---------------- 录音 ---------------- */
+function startRec(){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    status("这个浏览器不让你录音", true); return;
+  }
+  status("请求麦克风…");
+  navigator.mediaDevices.getUserMedia({
+    audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:1 }
+  }).then(function(s){
+    stream = s;
+    chunks = [];
+    recorder = new MediaRecorder(s);
+    recorder.ondataavailable = function(e){ if (e.data.size) chunks.push(e.data); };
+    recorder.onstop = function(){
+      var blob = new Blob(chunks, {type: recorder.mimeType || "audio/webm"});
+      (stream.getTracks()||[]).forEach(function(t){ t.stop(); });
+      stream = null;
+      lastBlob = blob;
+      decodeAndRun(blob);
+    };
+    recorder.start();
+    live = true;
+    recStart = Date.now();
+    document.getElementById("recBtn").textContent = "停止";
+    document.getElementById("recBtn").classList.add("live");
+    document.getElementById("meterWrap").classList.add("on");
+    status("");
+    tone(900, 0.08);
+    startMeter();
+    clearTimeout(stopTimer);
+    stopTimer = setTimeout(function(){ if (live) stopRec(); }, 4000);
+  }).catch(function(e){
+    status("拿不到麦克风：" + (e && e.message ? e.message : "被拒绝"), true);
+  });
+}
+
+function stopRec(){
+  clearTimeout(stopTimer);
+  if (!recorder || !live) return;
+  live = false;
+  cancelAnimationFrame(rafId);
+  document.getElementById("recBtn").textContent = "录音";
+  document.getElementById("recBtn").classList.remove("live");
+  document.getElementById("meterWrap").classList.remove("on");
+  status("分析中…");
+  tone(620, 0.09);
+  tone(470, 0.10, 0.11);
+  try { recorder.stop(); } catch(e){ status("录音中断", true); }
+}
+
+function startMeter(){
+  var acx = ensureAC();
+  if (meterSrc){ try { meterSrc.disconnect(); } catch(e){} }
+  meterSrc = acx.createMediaStreamSource(stream);
+  analyser = acx.createAnalyser();
+  analyser.fftSize = 1024;
+  meterSrc.connect(analyser);
+
+  var buf = new Float32Array(analyser.fftSize);
+  var bar = document.getElementById("meterBar");
+  var hint = document.getElementById("meterHint");
+  var timeEl = document.getElementById("recTime");
+  var loud = 0;
+
+  function tick(){
+    if (!live) return;
+    analyser.getFloatTimeDomainData(buf);
+    var s = 0;
+    for (var i=0;i<buf.length;i++) s += buf[i]*buf[i];
+    var lev = Math.sqrt(s/buf.length);
+    if (lev > loud) loud = lev;
+    var pct = Math.min(100, lev * 320);
+    bar.style.width = pct + "%";
+    bar.style.background = pct < 18 ? "#c9d1d9" : (pct > 92 ? "#a66e0c" : "#267a57");
+    timeEl.textContent = "正在录音 " + ((Date.now() - recStart)/1000).toFixed(1) + " 秒";
+    hint.textContent = loud < 0.008 ? "还没收到声音，凑近麦克风"
+                     : (pct > 92 ? "有点爆了，离远一点" : "收到声音了");
+    rafId = requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+/* ---------------- 分析 ---------------- */
+function decodeAndRun(blob){
+  var fr = new FileReader();
+  fr.onload = function(){
+    ensureAC().decodeAudioData(fr.result).then(function(buf){
+      var res = analyse(buf.getChannelData(0), buf.sampleRate, cur);
+      if (res.err){ status(res.err, true); return; }
+      try { lastMatch = matchWord(buf); } catch(e){ lastMatch = null; }
+      status("");
+      render(res);
+    }).catch(function(){ status("这个录音解不开", true); });
+  };
+  fr.readAsArrayBuffer(blob);
+}
+
+function down16(data, sr){
+  if (sr <= 16000) return {x:data, sr:sr};
+  var f = Math.round(sr/16000), n = Math.floor(data.length/f), out = new Float32Array(n);
+  for (var i=0;i<n;i++){
+    var s = 0;
+    for (var j=0;j<f;j++) s += data[i*f+j];
+    out[i] = s/f;
+  }
+  return {x:out, sr:sr/f};
+}
+
+function rms(x, a, b){
+  var s = 0;
+  for (var i=a;i<b;i++) s += x[i]*x[i];
+  return Math.sqrt(s/(b-a||1));
+}
+
+function acf(x,a,b,lag,r0){
+  if (lag < 1) return 0;
+  var s=0, n=b-a;
+  for (var i=0;i<n-lag;i++) s += x[a+i]*x[a+i+lag];
+  return s/r0;
+}
+
+/* YIN：累积均值归一化差分，比自相关抗倍频 */
+function f0frame(x, a, b, sr){
+  var n = b - a;
+  var minLag = Math.max(2, Math.floor(sr / 450));
+  var maxLag = Math.min(n - 3, Math.floor(sr / 75));
+  if (maxLag <= minLag + 2) return 0;
+
+  var d = new Float32Array(maxLag + 2);
+  var tau, i, sum, df;
+  for (tau = minLag; tau <= maxLag; tau++){
+    sum = 0;
+    for (i = 0; i < n - tau; i++){
+      df = x[a + i] - x[a + i + tau];
+      sum += df * df;
+    }
+    d[tau] = sum;
+  }
+
+  var dn = new Float32Array(maxLag + 2);
+  var run = 0;
+  for (tau = minLag; tau <= maxLag; tau++){
+    run += d[tau];
+    dn[tau] = run > 1e-12 ? d[tau] * (tau - minLag + 1) / run : 1;
+  }
+
+  var best = -1;
+  for (tau = minLag + 1; tau < maxLag; tau++){
+    if (dn[tau] < 0.15){
+      while (tau + 1 < maxLag && dn[tau + 1] < dn[tau]) tau++;
+      best = tau;
+      break;
+    }
+  }
+  if (best < 0){
+    var mn = 1e9;
+    for (tau = minLag; tau <= maxLag; tau++) if (dn[tau] < mn){ mn = dn[tau]; best = tau; }
+    if (mn > 0.42) return 0;
+  }
+
+  var y0 = dn[best - 1] || 0, y1 = dn[best], y2 = dn[best + 1] || 0;
+  var den = y0 - 2 * y1 + y2;
+  var sh = Math.abs(den) > 1e-12 ? 0.5 * (y0 - y2) / den : 0;
+  if (Math.abs(sh) > 1) sh = 0;
+  return sr / (best + sh);
+}
+
+function speechSpan(x, sr){
+  var hop = Math.floor(sr*0.01), win = Math.floor(sr*0.03);
+  var n = Math.floor((x.length-win)/hop);
+  if (n < 4) return null;
+  var mx = 0, env = new Float32Array(n);
+  for (var i=0;i<n;i++){
+    env[i] = rms(x, i*hop, i*hop+win);
+    if (env[i] > mx) mx = env[i];
+  }
+  if (mx < 0.004) return null;
+  var th = mx*0.06, first=-1, last=-1;
+  for (var i=0;i<n;i++){ if (env[i] > th){ first=i; break; } }
+  for (var i=n-1;i>=0;i--){ if (env[i] > th){ last=i; break; } }
+  if (first < 0 || last <= first) return null;
+  return {a:first*hop, b:last*hop+win};
+}
+
+function splitSegs(x, sr, a, b, k){
+  if (k <= 1) return [[a,b]];
+  var hop = Math.floor(sr*0.005), win = Math.floor(sr*0.02);
+  var n = Math.floor((b-a-win)/hop) + 1;
+  var e = new Float32Array(n);
+  for (var i=0;i<n;i++) e[i] = rms(x, a+i*hop, a+i*hop+win);
+  var cuts = [];
+  for (var s=1;s<k;s++){
+    var target = Math.round(n*s/k);
+    var span = Math.max(3, Math.round(n/(k*4)));
+    var lo = Math.max(1, target-span), hi = Math.min(n-2, target+span);
+    var bi = target, bv = 1e9;
+    for (var i=lo;i<=hi;i++){ if (e[i] < bv){ bv = e[i]; bi = i; } }
+    cuts.push(bi);
+  }
+  cuts.sort(function(p,q){ return p-q; });
+  var bounds = [0];
+  cuts.forEach(function(c){ if (c > bounds[bounds.length-1]) bounds.push(c); });
+  bounds.push(n-1);
+  var segs = [];
+  for (var s=0;s<bounds.length-1;s++) segs.push([a+bounds[s]*hop, a+bounds[s+1]*hop]);
+  return segs;
+}
+
+function analyse(x0, sr0, word){
+  var r = down16(x0, sr0), x = r.x, sr = r.sr;
+  var span = speechSpan(x, sr);
+  if (!span) return {err:"没听到声音，再读一次"};
+  var dur = (span.b - span.a) / sr;
+  if (dur < 0.18) return {err:"太短了，整个词读完再停"};
+  if (dur > 3.0)  return {err:"太长了，一次只读一个词"};
+
+  var k = word.mora.length;
+  var segs = splitSegs(x, sr, span.a, span.b, k);
+
+  var morae = [];
+  for (var s=0;s<segs.length;s++){
+    var a = segs[s][0], b = segs[s][1];
+    var win = Math.min(Math.floor(sr*0.04), Math.max(Math.floor(sr*0.012), b-a));
+    var step = Math.max(1, Math.floor(win/4));
+    var f0s = [];
+    for (var p=a; p+win<=b; p+=step){
+      var f = f0frame(x, p, p+win, sr);
+      if (f > 60 && f < 520) f0s.push(f);
+    }
+    f0s.sort(function(u,v){ return u-v; });
+    morae.push({
+      kana: word.mora[s],
+      ms: Math.round((b-a)/sr*1000),
+      amp: rms(x, a, b),
+      f0: f0s.length ? f0s[Math.floor(f0s.length/2)] : 0
+    });
+  }
+
+  // 能量太低当成无声
+  var amps = morae.map(function(m){ return m.amp; }).filter(function(v){ return v>0; }).sort(function(u,v){ return u-v; });
+  var ampMed = amps.length ? amps[Math.floor(amps.length/2)] : 0;
+  morae.forEach(function(m){
+    m.voiced = m.f0 > 0 && (ampMed === 0 || m.amp > ampMed*0.28);
+    if (!m.voiced) m.f0 = 0;
+  });
+
+  var voicedMs = morae.filter(function(m){ return m.voiced && m.kana !== "っ"; })
+                      .map(function(m){ return m.ms; }).sort(function(u,v){ return u-v; });
+  var beat = voicedMs.length ? voicedMs[Math.floor(voicedMs.length/2)] : 1;
+  morae.forEach(function(m){ m.ratio = m.ms / beat; });
+
+  var logs = morae.filter(function(m){ return m.voiced; }).map(function(m){ return Math.log(m.f0); });
+  var base = logs.length ? logs.reduce(function(p,q){ return p+q; },0)/logs.length : 0;
+  morae.forEach(function(m){
+    m.semi = m.voiced ? 12*(Math.log(m.f0)-base)/Math.LN2 : null;
+  });
+
+  return {morae:morae, beat:beat, dur:dur};
+}
+
+/* ---------------- 渲染 ---------------- */
+function resetResult(){
+  document.getElementById("emptyTip").style.display = "";
+  document.getElementById("resultBody").style.display = "none";
+}
+
+function render(res){
+  document.getElementById("emptyTip").style.display = "none";
+  document.getElementById("resultBody").style.display = "";
+
+  var ref = cur.refRatio || [];
+  var box = document.getElementById("bars");
+  box.innerHTML = "";
+  var mx = 1.2;
+  res.morae.forEach(function(m,i){
+    mx = Math.max(mx, m.ratio, ref[i] || 0);
+  });
+  res.morae.forEach(function(m,i){
+    var r = ref[i];
+    var short_ = r ? (m.ratio < r*0.65) : (m.ratio < 0.6);
+    var h = Math.max(6, Math.round(m.ratio/mx * 86));
+    var rh = r ? Math.max(4, Math.round(r/mx * 86)) : 0;
+    var w = document.createElement("div");
+    w.className = "barBox";
+    w.innerHTML =
+      '<div class="barVal">' + m.ratio.toFixed(2) + (r ? ' <i>/ ' + r.toFixed(2) + '</i>' : '') + '</div>' +
+      '<div class="bar' + (short_?" bad":"") + '" style="height:' + h + 'px"></div>' +
+      (r ? '<div class="barRef" style="width:' + Math.min(100, r/mx*100) + '%"></div>' : '') +
+      '<div class="barLab">' + m.kana + '</div>' +
+      '<div class="barSub">' + m.ms + 'ms</div>';
+    box.appendChild(w);
+  });
+
+  drawPitch(res);
+  renderTips(res);
+}
+
+function drawPitch(res){
+  var cv = document.getElementById("pitch");
+  var g = cv.getContext("2d");
+  var W = cv.width, H = cv.height, padL = 60, padR = 36, padT = 30, padB = 46;
+  g.clearRect(0,0,W,H);
+
+  var n = res.morae.length;
+  var refSemi = cur.refSemi || [];
+  var vals = [];
+  res.morae.forEach(function(m){ if (m.semi !== null) vals.push(m.semi); });
+  refSemi.forEach(function(v){ if (v !== null && v !== undefined) vals.push(v); });
+  if (!vals.length) return;
+
+  var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  if (hi-lo < 4){ lo -= 2; hi += 2; }
+  var pad = (hi-lo)*0.2; lo -= pad; hi += pad;
+
+  function X(i){ return padL + (W-padL-padR)*(n===1?0.5:i/(n-1)); }
+  function Y(v){ return H-padB - (H-padT-padB)*((v-lo)/(hi-lo)); }
+
+  // 标准：灰虚线
+  g.setLineDash([7,7]); g.lineWidth = 3; g.strokeStyle = "#9aa4b0";
+  g.beginPath();
+  var on = false;
+  for (var i=0;i<n;i++){
+    var v = refSemi[i];
+    if (v === null || v === undefined){ on = false; continue; }
+    if (!on){ g.moveTo(X(i), Y(v)); on = true; } else g.lineTo(X(i), Y(v));
+  }
+  g.stroke(); g.setLineDash([]);
+
+  // 你：蓝线
+  g.strokeStyle = "#2f6fb2"; g.lineWidth = 4; g.lineJoin = "round";
+  g.beginPath();
+  on = false;
+  for (var i=0;i<n;i++){
+    var m = res.morae[i];
+    if (m.semi === null){ on = false; continue; }
+    if (!on){ g.moveTo(X(i), Y(m.semi)); on = true; } else g.lineTo(X(i), Y(m.semi));
+  }
+  g.stroke();
+
+  g.font = "22px Microsoft YaHei, sans-serif";
+  g.textAlign = "center";
+  for (var i=0;i<n;i++){
+    var m = res.morae[i];
+    if (m.semi !== null){
+      g.fillStyle = "#2f6fb2";
+      g.beginPath(); g.arc(X(i), Y(m.semi), 7, 0, 7); g.fill();
+    }
+    g.fillStyle = "#5b6470";
+    g.fillText(m.kana, X(i), H-14);
+  }
+
+  g.fillStyle = "#b9c1ca"; g.font = "17px Microsoft YaHei, sans-serif";
+  g.fillText("只看高低走向，不比绝对音高", W/2, padT-8);
+}
+
+function renderTips(res){
+  var ul = document.getElementById("tips");
+  ul.innerHTML = "";
+  var msgs = [];
+  var ref = cur.refRatio || [];
+
+  res.morae.forEach(function(m,i){
+    var r = ref[i];
+    var tag = "「" + m.kana + "」";
+    if (m.kana === "っ"){
+      if (m.ratio < 0.6)
+        msgs.push({c:"no", t:tag + "只占 " + m.ratio.toFixed(2) + " 拍",
+                   s: r ? "标准是 " + r.toFixed(2) + " 拍，要留出这个停顿" : "需要停满一拍"});
+      else
+        msgs.push({c:"ok", t:tag + "停顿 " + m.ratio.toFixed(2) + " 拍",
+                   s: r ? "标准是 " + r.toFixed(2) + " 拍" : "停够了"});
+      return;
+    }
+    if (!m.voiced){
+      msgs.push({c:"no", t:tag + "几乎没声音", s:"这一拍要发出来"});
+      return;
+    }
+    if (r && m.ratio < r*0.65)
+      msgs.push({c:"no", t:tag + "只占 " + m.ratio.toFixed(2) + " 拍",
+                 s:"标准是 " + r.toFixed(2) + " 拍，短了不少"});
+    else if (r && m.ratio > r*1.6)
+      msgs.push({c:"no", t:tag + "占 " + m.ratio.toFixed(2) + " 拍",
+                 s:"标准是 " + r.toFixed(2) + " 拍，拖长了"});
+  });
+
+  if (lastMatch){
+    var tm = lastMatch;
+    var same = tm.top.k === cur.kanji && tm.top.y === cur.kana;
+    if (same)
+      msgs.unshift({c:"ok", t:"听的就是这个词", s:"和标准录音对上了"});
+    else
+      msgs.unshift({c:"no", t:"听起来像「" + tm.top.k + "」",
+                    s:"不是「" + cur.kanji + "」，再读一遍"});
+  }
+
+  if (!msgs.length)
+    msgs.push({c:"ok", t:"每拍长短和标准接近", s:"换一个词再试试"});
+
+  var refSemi = cur.refSemi || [];
+  var pairs = [];
+  for (var i = 0; i < res.morae.length; i++){
+    var u = res.morae[i].semi, rf = refSemi[i];
+    if (u !== null && u !== undefined && rf !== null && rf !== undefined)
+      pairs.push([u, rf, res.morae[i].kana]);
+  }
+  if (pairs.length >= 2){
+    var mx = 0, my = 0;
+    pairs.forEach(function(p){ mx += p[0]; my += p[1]; });
+    mx /= pairs.length; my /= pairs.length;
+    var sxy = 0, sxx = 0, syy = 0;
+    pairs.forEach(function(p){
+      var A = p[0] - mx, B = p[1] - my;
+      sxy += A * B; sxx += A * A; syy += B * B;
+    });
+    var r = (sxx > 1e-9 && syy > 1e-9) ? sxy / Math.sqrt(sxx * syy) : 1;
+    var flip = pairs.filter(function(p){
+      return (p[0] - mx) * (p[1] - my) < 0 && Math.abs(p[0] - p[1]) > 2.5;
+    }).map(function(p){ return p[2]; });
+    if (flip.length >= Math.max(2, Math.ceil(pairs.length / 2)))
+      msgs.push({c:"no", t:"声调高低和标准反了：" + flip.join("、"),
+                 s:"这几拍的高低走向和标准相反"});
+    else if (r < 0.2)
+      msgs.push({c:"no", t:"声调走向和标准不一致",
+                 s:"比了 " + pairs.length + " 拍，起伏对不上"});
+    else
+      msgs.push({c:"ok", t:"声调走向和标准接近",
+                 s:"比了 " + pairs.length + " 拍"});
+  } else {
+    msgs.push({c:"", t:"音高采到的点太少，这次不下声调结论",
+               s:"读慢一点、每拍拖足一点再试"});
+  }
+
+  msgs.slice(0,6).forEach(function(o){
+    var li = document.createElement("li");
+    li.innerHTML = '<span class="dot ' + o.c + '"></span><div>' + o.t +
+                   '<small>' + o.s + '</small></div>';
+    ul.appendChild(li);
+  });
+}
+
+/* ================= 二期：判断读的是不是这个词 =================
+   参考侧的特征由 Python 预先算好（浏览器在 file:// 下拿不到本地音频的采样）。
+   这里只算用户这一段的特征，然后和本课所有词做 DTW 比对。          */
+var SR_MF = 16000, FLEN_MF = 400, HOP_MF = 160, NFFT_MF = 512, NMEL_MF = 26, NCEP = 12;
+
+var FB_MF = (function(){
+  function hz2mel(f){ return 2595 * Math.log10(1 + f / 700); }
+  function mel2hz(m){ return 700 * (Math.pow(10, m / 2595) - 1); }
+  var n = NMEL_MF + 2, pts = [], i;
+  var a = hz2mel(0), b = hz2mel(SR_MF / 2);
+  for (i = 0; i < n; i++) pts.push(mel2hz(a + (b - a) * i / (n - 1)));
+  var bins = pts.map(function(f){ return Math.floor((NFFT_MF + 1) * f / SR_MF); });
+  var fb = [];
+  for (i = 0; i < NMEL_MF; i++) fb.push(new Float64Array(NFFT_MF / 2 + 1));
+  for (var m = 1; m <= NMEL_MF; m++){
+    var l = bins[m - 1], c = bins[m], r = bins[m + 1];
+    for (var k = l; k < c; k++) fb[m - 1][k] = (k - l) / Math.max(1, c - l);
+    for (var k2 = c; k2 < r; k2++) fb[m - 1][k2] = (r - k2) / Math.max(1, r - c);
+  }
+  return fb;
+})();
+
+var DCT_MF = (function(){
+  var d = [];
+  for (var i = 0; i < NCEP; i++){
+    var row = new Float64Array(NMEL_MF);
+    for (var j = 0; j < NMEL_MF; j++)
+      row[j] = Math.cos(Math.PI * (i + 1) * (j + 0.5) / NMEL_MF) * Math.sqrt(2 / NMEL_MF);
+    d.push(row);
+  }
+  return d;
+})();
+
+var WIN_MF = (function(){
+  var w = new Float64Array(FLEN_MF);
+  for (var i = 0; i < FLEN_MF; i++) w[i] = 0.54 - 0.46 * Math.cos(2 * Math.PI * i / (FLEN_MF - 1));
+  return w;
+})();
+
+var COS_T = new Float64Array(NFFT_MF / 2), SIN_T = new Float64Array(NFFT_MF / 2);
+for (var _q = 0; _q < NFFT_MF / 2; _q++){
+  COS_T[_q] = Math.cos(-2 * Math.PI * _q / NFFT_MF);
+  SIN_T[_q] = Math.sin(-2 * Math.PI * _q / NFFT_MF);
+}
+
+function fft512(re, im){
+  var n = re.length, i, j, t;
+  for (i = 1, j = 0; i < n; i++){
+    var bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j){ t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+  }
+  for (var len = 2; len <= n; len <<= 1){
+    var half = len >> 1, step = n / len;
+    for (i = 0; i < n; i += len){
+      for (var k = 0; k < half; k++){
+        var idx = k * step;
+        var wr = COS_T[idx], wi = SIN_T[idx];
+        var ur = re[i + k], ui = im[i + k];
+        var vr = re[i + k + half] * wr - im[i + k + half] * wi;
+        var vi = re[i + k + half] * wi + im[i + k + half] * wr;
+        re[i + k] = ur + vr; im[i + k] = ui + vi;
+        re[i + k + half] = ur - vr; im[i + k + half] = ui - vi;
+      }
+    }
+  }
+}
+
+function trimQuiet(y, sr){
+  var hop = Math.round(sr * 0.01), win = Math.round(sr * 0.025);
+  var n = Math.floor((y.length - win) / hop);
+  if (n < 3) return y;
+  var e = new Float32Array(n), mx = 0;
+  for (var i = 0; i < n; i++){
+    var s2 = 0;
+    for (var j = 0; j < win; j++){ var v = y[i * hop + j]; s2 += v * v; }
+    e[i] = Math.sqrt(s2 / win);
+    if (e[i] > mx) mx = e[i];
+  }
+  if (mx < 1e-4) return y;
+  var th = mx * 0.06, a = -1, b = -1;
+  for (var i2 = 0; i2 < n; i2++){ if (e[i2] > th){ a = i2; break; } }
+  for (var i3 = n - 1; i3 >= 0; i3--){ if (e[i3] > th){ b = i3; break; } }
+  if (a < 0 || b <= a) return y;
+  var pad = Math.round(sr * 0.05);
+  return y.subarray(Math.max(0, a * hop - pad), Math.min(y.length, b * hop + win + pad));
+}
+
+function to16k(x, sr){
+  if (sr === SR_MF) return x;
+  var m = Math.floor(x.length * SR_MF / sr), out = new Float32Array(m);
+  for (var i = 0; i < m; i++){
+    var pos = i * (x.length - 1) / (m - 1);
+    var a = Math.floor(pos), b = Math.min(x.length - 1, a + 1);
+    out[i] = x[a] + (x[b] - x[a]) * (pos - a);
+  }
+  return out;
+}
+
+function mfccOf(y0, sr0){
+  var y = to16k(y0, sr0);
+  if (y.length < FLEN_MF) return null;
+  var pre = new Float64Array(y.length);
+  pre[0] = y[0];
+  for (var i = 1; i < y.length; i++) pre[i] = y[i] - 0.97 * y[i - 1];
+  var nf = Math.floor((y.length - FLEN_MF) / HOP_MF) + 1;
+  if (nf < 3) return null;
+  var out = [], re = new Float64Array(NFFT_MF), im = new Float64Array(NFFT_MF);
+  for (var f = 0; f < nf; f++){
+    re.fill(0); im.fill(0);
+    var base = f * HOP_MF;
+    for (var k = 0; k < FLEN_MF; k++) re[k] = pre[base + k] * WIN_MF[k];
+    fft512(re, im);
+    var p = new Float64Array(NFFT_MF / 2 + 1);
+    for (var b2 = 0; b2 <= NFFT_MF / 2; b2++){
+      p[b2] = (re[b2] * re[b2] + im[b2] * im[b2]) / NFFT_MF;
+    }
+    var fe = new Float64Array(NMEL_MF);
+    for (var m2 = 0; m2 < NMEL_MF; m2++){
+      var acc = 0, row = FB_MF[m2];
+      for (var k3 = 0; k3 <= NFFT_MF / 2; k3++) acc += p[k3] * row[k3];
+      fe[m2] = Math.log(acc + 1e-8);
+    }
+    var c = new Float64Array(NCEP);
+    for (var q = 0; q < NCEP; q++){
+      var sm = 0, dr = DCT_MF[q];
+      for (var z = 0; z < NMEL_MF; z++) sm += fe[z] * dr[z];
+      c[q] = sm;
+    }
+    out.push(c);
+  }
+  for (var q2 = 0; q2 < NCEP; q2++){
+    var sum = 0, sum2 = 0;
+    for (var t2 = 0; t2 < nf; t2++){ sum += out[t2][q2]; sum2 += out[t2][q2] * out[t2][q2]; }
+    var mean = sum / nf;
+    var sd = Math.sqrt(Math.max(1e-9, sum2 / nf - mean * mean));
+    for (var t3 = 0; t3 < nf; t3++) out[t3][q2] = (out[t3][q2] - mean) / sd;
+  }
+  return out;
+}
+
+function unpackRef(row){
+  var n = row.n, flat = row.m, out = [];
+  for (var i = 0; i < n; i++){
+    var v = new Float64Array(NCEP);
+    for (var c = 0; c < NCEP; c++) v[c] = flat[i * NCEP + c] / 24.0;
+    out.push(v);
+  }
+  return out;
+}
+
+function dtwScore(A, B){
+  var n = A.length, m = B.length;
+  if (!n || !m) return Infinity;
+  var band = Math.max(12, Math.round(Math.max(n, m) * 0.25), Math.abs(n - m) + 8);
+  var INF = 1e18;
+  var prev = new Float64Array(m + 1).fill(INF), cur = new Float64Array(m + 1).fill(INF);
+  var plp = new Float64Array(m + 1), plc = new Float64Array(m + 1);
+  prev[0] = 0;
+  for (var i = 1; i <= n; i++){
+    cur.fill(INF); plc.fill(0);
+    var lo = Math.max(1, i - band), hi = Math.min(m, i + band);
+    for (var j = lo; j <= hi; j++){
+      var d = 0, a = A[i - 1], b = B[j - 1];
+      for (var c = 0; c < NCEP; c++){ var df = a[c] - b[c]; d += df * df; }
+      d = Math.sqrt(d);
+      var bp = prev[j - 1], bl = plp[j - 1];
+      if (prev[j] < bp){ bp = prev[j]; bl = plp[j]; }
+      if (cur[j - 1] < bp){ bp = cur[j - 1]; bl = plc[j - 1]; }
+      cur[j] = d + bp; plc[j] = bl + 1;
+    }
+    var t = prev; prev = cur; cur = t;
+    var t2 = plp; plp = plc; plc = t2;
+  }
+  return prev[m] / Math.max(1, plp[m]);
+}
+
+function matchWord(buf){
+  var refs = (window.MFCC || {})[cur.lesson];
+  if (!refs || !refs.length) return null;
+  var raw = trimQuiet(buf.getChannelData(0), buf.sampleRate);
+  var feats = mfccOf(raw, buf.sampleRate);
+  if (!feats || feats.length < 5) return null;
+  var qn = feats.length;
+  var cands = refs.filter(function(r){
+    var ratio = r.n / qn;
+    return ratio > 0.45 && ratio < 2.4;
+  });
+  if (cands.length < 3) cands = refs;
+  var scored = cands.map(function(r){
+    var base = dtwScore(feats, unpackRef(r));
+    var pen = 0.06 * Math.abs(r.n - qn) / Math.max(r.n, qn);
+    return { k: r.k, y: r.y, d: base + pen };
+  }).sort(function(a, b){ return a.d - b.d });
+  return {
+    top: scored[0],
+    second: scored[1],
+    margin: scored.length > 1 ? scored[1].d - scored[0].d : 0,
+    qn: qn
+  };
+}
+
+/* ---------------- 回放 ---------------- */
+function playMine(){
+  if (!lastBlob) return;
+  refAudio.pause();
+  if (lastUrl) URL.revokeObjectURL(lastUrl);
+  lastUrl = URL.createObjectURL(lastBlob);
+  var a = new Audio(lastUrl);
+  a.onended = function(){ status(""); };
+  a.play().then(function(){ status("播放你的录音…"); })
+   .catch(function(){ status("放不出来", true); });
+}
+
+/* ---------------- 启动 ---------------- */
+if (!WORDS.length){
+  document.getElementById("kanji").textContent = "缺数据";
+  status("data_l1.js 没加载上，确认它和 index.html 在同一个文件夹", true);
+} else {
+  buildChips();
+  nextWord();
+}
+
+document.getElementById("recBtn").onclick = function(){ if (live) stopRec(); else startRec(); };
+document.getElementById("nextBtn").onclick = nextWord;
+document.getElementById("refBtn").onclick = playRef;
+document.getElementById("playBtn").onclick = playMine;
+
+document.getElementById("foot").innerHTML =
+  "全部在本机算，录音不上传。<br>" +
+  "标准音是《新时代大学日语》第 2 册配套录音，已收录 " + LESSONS.length + " 课、共 " + WORDS.length + " 个词。<br>" +
+  "\u6bcf\u62cd\u65f6\u957f\u3001\u58f0\u8c03\u8d70\u5411\u3001\u201c\u542c\u6210\u54ea\u4e2a\u8bcd\u201d\u90fd\u662f\u548c\u6807\u51c6\u5f55\u97f3\u6bd4\u51fa\u6765\u7684\uff0c\u53ea\u5728\u672c\u8bfe\u8bcd\u8868\u5185\u6bd4\u8f83\u3002";
+
+if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+  status("这个浏览器不支持录音，换个浏览器", true);
+}
+
+</script>
+</body>
+</html>
