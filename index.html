@@ -40,8 +40,10 @@
     font:inherit;font-size:13.5px;line-height:1;
     padding:9px 15px;border-radius:100px;border:1px solid var(--line);
     background:transparent;color:var(--ink2);cursor:pointer;
-    transition:background .15s,border-color .15s,color .15s;
+    transition:background .18s,border-color .18s,color .18s,
+               transform .2s cubic-bezier(.3,1.4,.5,1);
   }
+  .chip:active{transform:scale(.95)}
   .chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
 
   /* 主舞台 */
@@ -66,8 +68,13 @@
   .morae .cnt{color:var(--ink3);font-size:13px}
 
   .actions{display:flex;gap:10px;justify-content:center;margin-top:30px;flex-wrap:wrap}
-  button{font-family:inherit;cursor:pointer;transition:opacity .15s,background .15s}
-  button:active{opacity:.72}
+  button{
+    font-family:inherit;cursor:pointer;
+    transition:opacity .16s,background .22s,border-color .22s,color .22s,
+               transform .2s cubic-bezier(.3,1.4,.5,1);
+  }
+  button:active{opacity:.72;transform:scale(.96)}
+  .primary:active{transform:scale(.975)}
   .primary{
     font-size:16px;font-weight:500;padding:14px 40px;border-radius:100px;
     border:none;background:var(--ink);color:#fff;letter-spacing:-.01em;
@@ -127,11 +134,32 @@
   footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--hair);
          color:var(--ink3);font-size:11.5px;line-height:1.75;text-align:center}
 
+  /* ---------- 动效 ---------- */
+  @keyframes fUp{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes growY{from{transform:scaleY(.04)}to{transform:scaleY(1)}}
+
+  header,.lessons,.stage{animation:fUp .5s cubic-bezier(.22,.7,.3,1) both}
+  .lessons{animation-delay:70ms}
+  .stage{animation-delay:140ms}
+
+  .morae span{animation:fUp .34s cubic-bezier(.22,.7,.3,1) both}
+  .bars .barBox{animation:fUp .38s cubic-bezier(.22,.7,.3,1) both}
+  .bars .bar{transform-origin:bottom;animation:growY .5s cubic-bezier(.22,.7,.3,1) both}
+  ul.tips li{animation:fUp .34s cubic-bezier(.22,.7,.3,1) both}
+  #meterWrap.on{animation:fUp .3s cubic-bezier(.22,.7,.3,1) both}
+
   @media (max-width:420px){
     .wrap{padding:20px 16px 48px}
     .actions{gap:8px}
     .primary{padding:14px 34px}
     .secondary{padding:13px 18px;font-size:14px}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{
+      animation-duration:.01ms!important;animation-delay:0s!important;
+      transition-duration:.01ms!important;scroll-behavior:auto!important;
+    }
   }
 </style>
 </head>
@@ -232,6 +260,23 @@ var recorder = null, chunks = [], stream = null, live = false, stopTimer = 0;
 var acCtx = null, analyser = null, meterSrc = null, rafId = 0, recStart = 0;
 var lastBlob = null, lastUrl = null, lastMatch = null;
 var refAudio = new Audio();
+refAudio.preload = "auto";          // 手机多半会忽略，但桌面能少等一下
+refAudio.onerror = function(){
+  var n = refAudio.getAttribute("data-src");
+  if (n) status("打不开 " + n, true);
+};
+
+/* 换词时让字浮上来一点。系统开了「减弱动态效果」就什么都不做。 */
+var calm = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+function lift(el, dy, ms){
+  if (calm || !el || !el.animate) return;
+  if (el._lift) el._lift.cancel();
+  el._lift = el.animate(
+    [{opacity:0, transform:"translateY(" + (dy || 9) + "px)"},
+     {opacity:1, transform:"translateY(0)"}],
+    {duration:ms || 340, easing:"cubic-bezier(.22,.7,.3,1)"}
+  );
+}
 
 /* ---------------- 词库 ---------------- */
 function buildChips(){
@@ -246,6 +291,9 @@ function buildChips(){
     b.onclick = function(){
       if (live) stopRec();
       curLesson = it.v; buildChips(); nextWord();
+      var on = box.querySelector ? box.querySelector(".chip.on") : null;
+      if (on && on.scrollIntoView)
+        on.scrollIntoView({block:"nearest", inline:"center", behavior: calm ? "auto" : "smooth"});
     };
     box.appendChild(b);
   });
@@ -263,29 +311,54 @@ function nextWord(){
   var w;
   do { w = p[Math.floor(Math.random()*p.length)]; } while (p.length>1 && cur && w === cur);
   cur = w;
-  document.getElementById("kanji").textContent = w.kanji;
-  document.getElementById("kana").textContent  = w.kana;
-  document.getElementById("acc").textContent = "第 " + w.lesson + " 课";
+  var kj = document.getElementById("kanji");
+  var kn = document.getElementById("kana");
+  kj.textContent = w.kanji;
+  kn.textContent  = w.kana;
+  var ac = document.getElementById("acc");
+  ac.textContent = "第 " + w.lesson + " 课";
+  lift(kj, 13, 400);
+  lift(kn, 9, 400);
+  lift(ac, 5, 400);
+
   var row = document.getElementById("moraRow");
   row.innerHTML = "";
-  w.mora.forEach(function(m){
+  w.mora.forEach(function(m, i){
     var s = document.createElement("span");
     s.innerHTML = "<b>" + m + "</b>";
+    s.style.animationDelay = (70 + i * 34) + "ms";
     row.appendChild(s);
   });
   var cnt = document.createElement("span");
   cnt.style.color = "#8a929c";
+  cnt.style.animationDelay = (70 + w.mora.length * 34) + "ms";
   cnt.textContent = w.mora.length + " 拍";
   row.appendChild(cnt);
   lastMatch = null;
   if (typeof ensureMfcc === "function") ensureMfcc(cur.lesson);
+  primeRef(w);
   resetResult();
+}
+
+/* 换词时先把这一课的录音挂上去。等用户点「聽標準」时文件已经在内存里，
+   play() 就能在点击的同一个动作里同步调用——iOS 上延迟调用会被拦掉。 */
+function primeRef(w){
+  if (!w || !w.src) return;
+  if (refAudio.getAttribute("data-src") === w.src) return;
+  refAudio.setAttribute("data-src", w.src);
+  refAudio.src = w.src;
+  refAudio.load();
 }
 
 /* ---------------- 状态与提示音 ---------------- */
 function status(t, err){
   var s = document.getElementById("status");
-  s.textContent = t || "";
+  var nt = t || "";
+  if (s.textContent !== nt && !calm && s.animate){
+    if (s._fade) s._fade.cancel();
+    s._fade = s.animate([{opacity:0},{opacity:1}], {duration:190, easing:"ease-out"});
+  }
+  s.textContent = nt;
   s.className = "status" + (err ? " err" : "");
 }
 
@@ -316,27 +389,39 @@ function tone(freq, dur, delay){
 var refTimer = 0;
 function playRef(){
   if (!cur || !cur.src){ status("这个词没有录音", true); return; }
-  try{
-    clearTimeout(refTimer);
-    refAudio.pause();
-    if (refAudio.getAttribute("data-src") !== cur.src){
-      refAudio.setAttribute("data-src", cur.src);
-      refAudio.src = cur.src;
-    }
-    var go = function(){
-      try{
-        refAudio.currentTime = cur.start;
-        refAudio.play().then(function(){ status("播放标准音…"); })
-          .catch(function(){ status("放不出来，看看 audio 文件夹在不在", true); });
-        refTimer = setTimeout(function(){
-          refAudio.pause();
-          status("");
-        }, (cur.dur + 0.2) * 1000);
-      }catch(e){}
+  clearTimeout(refTimer);
+
+  var name = cur.src;
+  if (refAudio.error) refAudio.removeAttribute("data-src");   // 上次失败了，重来一次
+  primeRef(cur);
+
+  // 先暂停再播，同一个词连点也能从头开始
+  refAudio.pause();
+
+  // 关键：play() 必须现在调，还在这次点击里。手机上不给预下载，
+  // 文件没到之前就从播放器起播，等元数据到了再定位到那个词。
+  var p = refAudio.play();
+
+  var seek = function(){
+    try { refAudio.currentTime = cur.start; } catch(e){}
+    refTimer = setTimeout(function(){ refAudio.pause(); status(""); }, (cur.dur + 0.2) * 1000);
+  };
+
+  if (refAudio.readyState >= 1) seek();
+  else{
+    var once = function(){
+      refAudio.removeEventListener("loadedmetadata", once);
+      seek();
     };
-    if (refAudio.readyState >= 1) go();
-    else refAudio.onloadedmetadata = go;
-  }catch(e){ status("播放失败", true); }
+    refAudio.addEventListener("loadedmetadata", once);
+  }
+
+  p.then(function(){
+    status("播放标准音…");
+  }).catch(function(e){
+    if (e && e.name === "NotAllowedError") status("再点一次", true);
+    else status("打不开 " + name, true);
+  });
 }
 
 /* ---------------- 录音 ---------------- */
@@ -401,21 +486,34 @@ function startMeter(){
   var bar = document.getElementById("meterBar");
   var hint = document.getElementById("meterHint");
   var timeEl = document.getElementById("recTime");
-  var loud = 0;
+  var loud = 0, shown = 0;
 
   function tick(){
     if (!live) return;
     analyser.getFloatTimeDomainData(buf);
-    var s = 0;
-    for (var i=0;i<buf.length;i++) s += buf[i]*buf[i];
+    var s = 0, pk = 0;
+    for (var i=0;i<buf.length;i++){
+      var v = buf[i];
+      s += v*v;
+      if (v > pk) pk = v; else if (-v > pk) pk = -v;
+    }
     var lev = Math.sqrt(s/buf.length);
     if (lev > loud) loud = lev;
-    var pct = Math.min(100, lev * 320);
+
+    // 手机麦克风比电脑灵敏一大截，线性放大会一开口就顶满。
+    // 换成 dB 刻度：-50dB 起、-6dB 满，正常说话落在中间。
+    var db = 20 * Math.log10(lev + 1e-7);
+    var tgt = (db + 50) / 44;
+    tgt = tgt < 0 ? 0 : (tgt > 1 ? 1 : tgt);
+    shown += (tgt - shown) * (tgt > shown ? 0.55 : 0.11);   // 上得快，落得慢
+
+    var pct = Math.round(shown * 100);
+    var clip = pk > 0.985;                                  // 真顶到满刻度才算爆
     bar.style.width = pct + "%";
-    bar.style.background = pct < 18 ? "#c9d1d9" : (pct > 92 ? "#a66e0c" : "#267a57");
+    bar.style.background = clip ? "#a66e0c" : (pct < 12 ? "#c9d1d9" : "#267a57");
     timeEl.textContent = "正在录音 " + ((Date.now() - recStart)/1000).toFixed(1) + " 秒";
-    hint.textContent = loud < 0.008 ? "还没收到声音，凑近麦克风"
-                     : (pct > 92 ? "有点爆了，离远一点" : "收到声音了");
+    hint.textContent = loud < 0.01 ? "还没收到声音，凑近麦克风"
+                     : (clip ? "离远一点，声音有点爆" : "收到声音了");
     rafId = requestAnimationFrame(tick);
   }
   tick();
@@ -607,7 +705,9 @@ function resetResult(){
 
 function render(res){
   document.getElementById("emptyTip").style.display = "none";
-  document.getElementById("resultBody").style.display = "";
+  var body = document.getElementById("resultBody");
+  body.style.display = "";
+  lift(body, 11, 430);
 
   var ref = cur.refRatio || [];
   var box = document.getElementById("bars");
@@ -621,11 +721,13 @@ function render(res){
     var short_ = r ? (m.ratio < r*0.65) : (m.ratio < 0.6);
     var h = Math.max(6, Math.round(m.ratio/mx * 86));
     var rh = r ? Math.max(4, Math.round(r/mx * 86)) : 0;
+    var d = (90 + i*46) + "ms";
     var w = document.createElement("div");
     w.className = "barBox";
+    w.style.animationDelay = d;
     w.innerHTML =
       '<div class="barVal">' + m.ratio.toFixed(2) + (r ? ' <i>/ ' + r.toFixed(2) + '</i>' : '') + '</div>' +
-      '<div class="bar' + (short_?" bad":"") + '" style="height:' + h + 'px"></div>' +
+      '<div class="bar' + (short_?" bad":"") + '" style="height:' + h + 'px;animation-delay:' + d + '"></div>' +
       (r ? '<div class="barRef" style="width:' + Math.min(100, r/mx*100) + '%"></div>' : '') +
       '<div class="barLab">' + m.kana + '</div>' +
       '<div class="barSub">' + m.ms + 'ms</div>';
@@ -726,12 +828,14 @@ function renderTips(res){
 
   if (lastMatch){
     var tm = lastMatch;
-    var same = tm.top.k === cur.kanji && tm.top.y === cur.kana;
-    if (same)
+    if (tm.top.k === cur.kanji && tm.top.y === cur.kana)
       msgs.unshift({c:"ok", t:"听的就是这个词", s:"和标准录音对上了"});
-    else
+    else if (tm.sure)
       msgs.unshift({c:"no", t:"听起来像「" + tm.top.k + "」",
                     s:"不是「" + cur.kanji + "」，再读一遍"});
+    else if ((tm.own === null || tm.own > 1.6) && (!tm.top || tm.top.d > 1.4))
+      msgs.unshift({c:"no", t:"这段没听清", s:"离麦克风近一点，整个词读完再停"});
+    // 只是恰好有点像别的词，不足以断言，就不提，免得指到一个八竿子打不着的词
   }
 
   if (!msgs.length)
@@ -771,8 +875,9 @@ function renderTips(res){
                s:"读慢一点、每拍拖足一点再试"});
   }
 
-  msgs.slice(0,6).forEach(function(o){
+  msgs.slice(0,6).forEach(function(o, i){
     var li = document.createElement("li");
+    li.style.animationDelay = (140 + i*50) + "ms";
     li.innerHTML = '<span class="dot ' + o.c + '"></span><div>' + o.t +
                    '<small>' + o.s + '</small></div>';
     ul.appendChild(li);
@@ -957,29 +1062,74 @@ function dtwScore(A, B){
   return prev[m] / Math.max(1, plp[m]);
 }
 
+/* 同一个词换个声音念，共振峰位置整体偏移，MFCC 距离会被一起抬高，
+   词与词之间就分不开了。把录音整体拉伸几档再比，等于替对方换个声道长度，
+   取最像的那一档。第一档就够像的时候不走后面几档。 */
+var WARPS = [1, 0.9, 0.8, 0.7, 0.62, 1.1, 1.2];
+
+function warpBy(x, f){
+  if (f === 1) return x;
+  var n = Math.round(x.length * f);
+  var out = new Float32Array(n);
+  for (var i = 0; i < n; i++){
+    var pos = i * (x.length - 1) / (n - 1);
+    var a = Math.floor(pos), b = Math.min(x.length - 1, a + 1);
+    out[i] = x[a] + (x[b] - x[a]) * (pos - a);
+  }
+  return out;
+}
+
 function matchWord(buf){
   var refs = (window.MFCC || {})[cur.lesson];
   if (!refs || !refs.length) return null;
   var raw = trimQuiet(buf.getChannelData(0), buf.sampleRate);
-  var feats = mfccOf(raw, buf.sampleRate);
-  if (!feats || feats.length < 5) return null;
-  var qn = feats.length;
-  var cands = refs.filter(function(r){
-    var ratio = r.n / qn;
-    return ratio > 0.45 && ratio < 2.4;
-  });
-  if (cands.length < 3) cands = refs;
-  var scored = cands.map(function(r){
-    var base = dtwScore(feats, unpackRef(r));
-    var pen = 0.06 * Math.abs(r.n - qn) / Math.max(r.n, qn);
-    return { k: r.k, y: r.y, d: base + pen };
-  }).sort(function(a, b){ return a.d - b.d });
-  return {
-    top: scored[0],
-    second: scored[1],
-    margin: scored.length > 1 ? scored[1].d - scored[0].d : 0,
-    qn: qn
-  };
+  var sr = buf.sampleRate;
+  var un = refs.map(unpackRef);
+  var best = null, bestQn = 0, own = null;
+
+  // 屏幕上这个词自己的分数，用来判断赢家是不是真的赢了一大截
+  var ownIdx = -1;
+  for (var oi = 0; oi < refs.length; oi++){
+    if (refs[oi].k === cur.kanji && refs[oi].y === cur.kana){ ownIdx = oi; break; }
+  }
+
+  for (var wi = 0; wi < WARPS.length; wi++){
+    var feats = mfccOf(warpBy(raw, WARPS[wi]), sr);
+    if (!feats || feats.length < 5) break;
+    var qn = feats.length;
+
+    var cands = [];
+    for (var i = 0; i < refs.length; i++){
+      var ratio = refs[i].n / qn;
+      if (ratio > 0.45 && ratio < 2.4) cands.push(i);
+    }
+    if (cands.length < 3){
+      cands = [];
+      for (var j = 0; j < refs.length; j++) cands.push(j);
+    }
+
+    for (var c = 0; c < cands.length; c++){
+      var r = refs[cands[c]];
+      var d = dtwScore(feats, un[cands[c]]) + 0.06 * Math.abs(r.n - qn) / Math.max(r.n, qn);
+      if (!best || d < best.d){ best = { k: r.k, y: r.y, d: d }; bestQn = qn; }
+      if (cands[c] === ownIdx && (own === null || d < own)) own = d;
+    }
+
+    // 长度过滤把屏幕上这个词筛掉了，单独给它补一次分
+    if (ownIdx >= 0 && cands.indexOf(ownIdx) < 0){
+      var ro = refs[ownIdx];
+      var od = dtwScore(feats, un[ownIdx]) + 0.06 * Math.abs(ro.n - qn) / Math.max(ro.n, qn);
+      if (own === null || od < own) own = od;
+    }
+
+    if (best && best.d < 1.7) break;
+  }
+
+  if (!best) return null;
+  var gap = own === null ? 0 : own - best.d;
+  // 只有赢家明显更近、而且它自己也确实像，才敢说是另一个词
+  var sure = own !== null && gap > 0.4 && own > best.d * 1.35 && best.d < 1.25;
+  return { top: best, own: own, gap: gap, sure: sure, qn: bestQn };
 }
 
 /* ---------------- 回放 ---------------- */
