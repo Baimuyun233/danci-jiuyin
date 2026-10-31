@@ -108,13 +108,17 @@
   .sech:first-child{margin-top:0}
   .sech .lg{font-size:12px}
 
-  .bars{display:flex;align-items:flex-end;gap:8px;height:104px;padding:0 2px}
-  .barBox{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%}
-  .barVal{font-size:11.5px;color:var(--ink2);margin-bottom:5px;font-variant-numeric:tabular-nums}
+  .bars{display:flex;align-items:flex-end;gap:8px;padding:0 2px}
+  .barBox{flex:1;display:flex;flex-direction:column;align-items:center}
+  .barVal{font-size:11.5px;color:var(--ink2);margin-bottom:6px;font-variant-numeric:tabular-nums}
   .barVal i{font-style:normal;color:var(--ink3);font-size:10.5px}
-  .bar{width:100%;max-width:34px;border-radius:5px 5px 2px 2px;background:var(--ink);min-height:3px}
+  .barPlot{display:flex;align-items:flex-end;justify-content:center;gap:4px;width:100%;height:104px}
+  .bar{flex:1 1 0;max-width:16px;min-width:4px;border-radius:4px 4px 1px 1px;background:var(--ink);min-height:3px}
+  .bar.good{background:#2f8f5b}
+  .bar.mid{background:#d99a23}
   .bar.bad{background:var(--bad)}
-  .barRef{width:100%;max-width:34px;height:4px;border-radius:2px;background:var(--soft);margin-top:4px}
+  .bar.plain{background:var(--ink)}
+  .barStd{flex:1 1 0;max-width:16px;min-width:4px;border-radius:4px 4px 1px 1px;background:#dde1e6;min-height:3px}
   .barLab{font-size:13px;color:var(--ink);margin-top:8px}
   .barSub{font-size:10.5px;color:var(--ink3)}
 
@@ -145,6 +149,7 @@
   .morae span{animation:fUp .34s cubic-bezier(.22,.7,.3,1) both}
   .bars .barBox{animation:fUp .38s cubic-bezier(.22,.7,.3,1) both}
   .bars .bar{transform-origin:bottom;animation:growY .5s cubic-bezier(.22,.7,.3,1) both}
+  .bars .barStd{transform-origin:bottom;animation:growY .5s cubic-bezier(.22,.7,.3,1) both}
   ul.tips li{animation:fUp .34s cubic-bezier(.22,.7,.3,1) both}
   #meterWrap.on{animation:fUp .3s cubic-bezier(.22,.7,.3,1) both}
 
@@ -771,7 +776,7 @@ function analyse(x0, sr0, word){
   var amps = morae.map(function(m){ return m.amp; }).filter(function(v){ return v>0; }).sort(function(u,v){ return u-v; });
   var ampMed = amps.length ? amps[Math.floor(amps.length/2)] : 0;
   morae.forEach(function(m){
-    m.silent = ampMed > 0 && m.amp <= ampMed*0.16;
+    m.silent = ampMed > 0 && m.amp <= ampMed*0.05;
     m.voiced = !m.silent && m.f0 > 0;     // voiced 只决定参不参与音高
     if (m.silent) m.f0 = 0;
   });
@@ -797,6 +802,21 @@ function resetResult(){
   document.getElementById("resultBody").style.display = "none";
 }
 
+/* 这一拍和标准差多少拍。柱子上写的就是拍数，差 0.25 拍就是 0.25，
+   这样颜色和数字对得上，不用换算。 */
+var DEV_OK = 0.15, DEV_OFF = 0.35;
+
+function devOf(m, r){
+  if (!r) return 0;
+  return m.ratio - r;
+}
+
+function bandCls(dv){
+  if (Math.abs(dv) <= DEV_OK) return " good";
+  if (Math.abs(dv) <= DEV_OFF) return " mid";
+  return " bad";
+}
+
 function render(res){
   document.getElementById("emptyTip").style.display = "none";
   var body = document.getElementById("resultBody");
@@ -812,17 +832,19 @@ function render(res){
   });
   res.morae.forEach(function(m,i){
     var r = ref[i];
-    var short_ = r ? (m.ratio < r*0.65) : (m.ratio < 0.6);
-    var h = Math.max(6, Math.round(m.ratio/mx * 86));
-    var rh = r ? Math.max(4, Math.round(r/mx * 86)) : 0;
+    var dv = devOf(m, r);
+    var h = Math.max(5, Math.round(m.ratio/mx * 96));
+    var rh = r ? Math.max(4, Math.round(r/mx * 96)) : 0;
     var d = (90 + i*46) + "ms";
     var w = document.createElement("div");
     w.className = "barBox";
     w.style.animationDelay = d;
     w.innerHTML =
       '<div class="barVal">' + m.ratio.toFixed(2) + (r ? ' <i>/ ' + r.toFixed(2) + '</i>' : '') + '</div>' +
-      '<div class="bar' + (short_?" bad":"") + '" style="height:' + h + 'px;animation-delay:' + d + '"></div>' +
-      (r ? '<div class="barRef" style="width:' + Math.min(100, r/mx*100) + '%"></div>' : '') +
+      '<div class="barPlot">' +
+        '<div class="bar' + (r ? bandCls(dv) : " plain") + '" style="height:' + h + 'px;animation-delay:' + d + '"></div>' +
+        (r ? '<div class="barStd" style="height:' + rh + 'px;animation-delay:' + d + '"></div>' : '') +
+      '</div>' +
       '<div class="barLab">' + m.kana + '</div>' +
       '<div class="barSub">' + m.ms + 'ms</div>';
     box.appendChild(w);
@@ -896,45 +918,28 @@ function renderTips(res){
   var msgs = [];
   var ref = cur.refRatio || [];
 
+  // 逐拍和标准比，只挑出偏得明显的
+  var offs = [];
   res.morae.forEach(function(m,i){
-    var r = ref[i];
-    var tag = "「" + m.kana + "」";
-    if (m.kana === "っ"){
-      if (m.ratio < 0.6)
-        msgs.push({c:"no", t:tag + "只占 " + m.ratio.toFixed(2) + " 拍",
-                   s: r ? "标准是 " + r.toFixed(2) + " 拍，要留出这个停顿" : "需要停满一拍"});
-      else
-        msgs.push({c:"ok", t:tag + "停顿 " + m.ratio.toFixed(2) + " 拍",
-                   s: r ? "标准是 " + r.toFixed(2) + " 拍" : "停够了"});
-      return;
-    }
     if (m.silent){
-      msgs.push({c:"no", t:tag + "几乎没声音", s:"这一拍要发出来"});
+      offs.push({c:"no", t:"「" + m.kana + "」几乎没声音", s:"这一拍要发出来"});
       return;
     }
-    if (r && m.ratio < r*0.65)
-      msgs.push({c:"no", t:tag + "只占 " + m.ratio.toFixed(2) + " 拍",
-                 s:"标准是 " + r.toFixed(2) + " 拍，短了不少"});
-    else if (r && m.ratio > r*1.6)
-      msgs.push({c:"no", t:tag + "占 " + m.ratio.toFixed(2) + " 拍",
-                 s:"标准是 " + r.toFixed(2) + " 拍，拖长了"});
+    var r = ref[i];
+    if (!r) return;
+    var dv = devOf(m, r);
+    if (Math.abs(dv) <= DEV_OFF) return;
+    var shortY = dv < 0;
+    offs.push({
+      c:"no",
+      t:"「" + m.kana + "」" + (shortY ? "偏短" : "偏长"),
+      s:"你 " + m.ratio.toFixed(2) + " 拍，标准 " + r.toFixed(2) + " 拍，" +
+        (m.kana === "っ" ? (shortY ? "停久一点" : "停短一点")
+                         : (shortY ? "再拖住一点" : "收快一点"))
+    });
   });
 
-  if (lastMatch){
-    var tm = lastMatch;
-    if (tm.top.k === cur.kanji && tm.top.y === cur.kana)
-      msgs.unshift({c:"ok", t:"听的就是这个词", s:"和标准录音对上了"});
-    else if (tm.sure)
-      msgs.unshift({c:"no", t:"听起来像「" + tm.top.k + "」",
-                    s:"不是「" + cur.kanji + "」，再读一遍"});
-    else if ((tm.own === null || tm.own > 1.6) && (!tm.top || tm.top.d > 1.4))
-      msgs.unshift({c:"no", t:"这段没听清", s:"离麦克风近一点，整个词读完再停"});
-    // 只是恰好有点像别的词，不足以断言，就不提，免得指到一个八竿子打不着的词
-  }
-
-  if (!msgs.length)
-    msgs.push({c:"ok", t:"每拍长短和标准接近", s:"换一个词再试试"});
-
+  // 声调先算：下面判断要不要提“没听清”要用到，音高差不多就不提
   var refSemi = cur.refSemi || [];
   var pairs = [];
   for (var i = 0; i < res.morae.length; i++){
@@ -942,6 +947,7 @@ function renderTips(res){
     if (u !== null && u !== undefined && rf !== null && rf !== undefined)
       pairs.push([u, rf, res.morae[i].kana]);
   }
+  var pitchMsg = null, pitchOk = true;
   if (pairs.length >= 2){
     var mx = 0, my = 0;
     pairs.forEach(function(p){ mx += p[0]; my += p[1]; });
@@ -955,19 +961,38 @@ function renderTips(res){
     var flip = pairs.filter(function(p){
       return (p[0] - mx) * (p[1] - my) < 0 && Math.abs(p[0] - p[1]) > 2.5;
     }).map(function(p){ return p[2]; });
-    if (flip.length >= Math.max(2, Math.ceil(pairs.length / 2)))
-      msgs.push({c:"no", t:"声调高低和标准反了：" + flip.join("、"),
-                 s:"这几拍的高低走向和标准相反"});
-    else if (r < 0.2)
-      msgs.push({c:"no", t:"声调走向和标准不一致",
-                 s:"比了 " + pairs.length + " 拍，起伏对不上"});
-    else
-      msgs.push({c:"ok", t:"声调走向和标准接近",
-                 s:"比了 " + pairs.length + " 拍"});
-  } else {
-    msgs.push({c:"", t:"音高采到的点太少，这次不下声调结论",
-               s:"读慢一点、每拍拖足一点再试"});
+    if (flip.length >= Math.max(3, Math.ceil(pairs.length * 0.75))){
+      pitchOk = false;
+      pitchMsg = {c:"no", t:"声调高低和标准反了：" + flip.join("、"),
+                  s:"这几拍的高低走向和标准相反"};
+    } else if (r < 0){
+      pitchOk = false;
+      pitchMsg = {c:"no", t:"声调走向和标准不一致",
+                  s:"比了 " + pairs.length + " 拍，起伏对不上"};
+    } else {
+      pitchMsg = {c:"ok", t:"声调走向和标准接近",
+                  s:"比了 " + pairs.length + " 拍"};
+    }
   }
+
+  if (lastMatch){
+    var tm = lastMatch;
+    if (tm.top.k === cur.kanji && tm.top.y === cur.kana)
+      msgs.unshift({c:"ok", t:"听的就是这个词", s:"和标准录音对上了"});
+    else if (tm.sure)
+      msgs.unshift({c:"no", t:"听起来像「" + tm.top.k + "」",
+                    s:"不是「" + cur.kanji + "」，再读一遍"});
+    else if (!pitchOk && (tm.own === null || tm.own > 1.6) && (!tm.top || tm.top.d > 1.4))
+      msgs.unshift({c:"no", t:"这段没听清", s:"离麦克风近一点，整个词读完再停"});
+    // 只是恰好有点像别的词，不足以断言，就不提，免得指到一个八竿子打不着的词
+  }
+
+  if (!offs.length)
+    msgs.push({c:"ok", t:"每拍长短和标准接近", s:"比了 " + res.morae.length + " 拍"});
+  else
+    offs.slice(0,3).forEach(function(o){ msgs.push(o); });
+
+  if (pitchMsg) msgs.push(pitchMsg);
 
   msgs.slice(0,6).forEach(function(o, i){
     var li = document.createElement("li");
